@@ -30,6 +30,9 @@ archives:
     files:
       - README.md
 
+release:
+  name_template: "Memory Box {{.Tag}}"
+
 checksum:
   name_template: "checksums.txt"
 
