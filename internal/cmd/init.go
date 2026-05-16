@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -53,7 +52,7 @@ func runInit(a *app.App, stdin *os.File, stdout *os.File) error {
 	cfg.Sections = sections
 
 	if backend == "rclone" {
-		rclonePath, err := wizardPickRcloneRemote(in, stdout)
+		rclonePath, err := wizardCloudSetup(in, stdout)
 		if err != nil {
 			return err
 		}
@@ -114,53 +113,6 @@ func wizardPickBackend(in *bufio.Reader, w io.Writer) (string, error) {
 		return "rclone", nil
 	}
 	return "local", nil
-}
-
-func wizardPickRcloneRemote(in *bufio.Reader, w io.Writer) (string, error) {
-	fmt.Fprintln(w)
-	fmt.Fprintln(w, "Cloud storage setup")
-	fmt.Fprintln(w, strings.Repeat("─", 52))
-	fmt.Fprintln(w)
-	fmt.Fprintln(w, "  membox uses rclone as transport. Configure your remote")
-	fmt.Fprintln(w, "  with `rclone config` before continuing.")
-	fmt.Fprintln(w)
-
-	// Show available remotes if rclone is installed.
-	if remotes := listRcloneRemotes(); len(remotes) > 0 {
-		fmt.Fprintln(w, "  Available rclone remotes:")
-		for _, r := range remotes {
-			fmt.Fprintf(w, "    • %s\n", r)
-		}
-		fmt.Fprintln(w)
-	}
-
-	fmt.Fprintln(w, "  Recommended: Cloudflare R2 (zero egress cost)")
-	fmt.Fprintln(w, "  Example paths:")
-	fmt.Fprintln(w, "    r2:my-bucket/membox")
-	fmt.Fprintln(w, "    s3:my-bucket/membox")
-	fmt.Fprintln(w, "    b2:my-bucket/membox")
-	fmt.Fprintln(w)
-	fmt.Fprintf(w, "  Remote path: ")
-
-	path := readLine(in)
-	if path == "" {
-		return "", fmt.Errorf("remote path cannot be empty — run `rclone config` to set up a remote")
-	}
-	return path, nil
-}
-
-func listRcloneRemotes() []string {
-	out, err := exec.Command("rclone", "listremotes").Output()
-	if err != nil {
-		return nil
-	}
-	var remotes []string
-	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
-		if line = strings.TrimSpace(line); line != "" {
-			remotes = append(remotes, line)
-		}
-	}
-	return remotes
 }
 
 func wizardPickDrive(in *bufio.Reader, w io.Writer) (string, error) {
