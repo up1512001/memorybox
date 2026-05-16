@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/up1512001/memorybox/internal/app"
+	"github.com/up1512001/memorybox/internal/gitignore"
 	"github.com/up1512001/memorybox/internal/manifest"
 	"github.com/up1512001/memorybox/internal/notify"
 	"github.com/up1512001/memorybox/internal/rsync"
@@ -121,10 +123,33 @@ func runBackup(ctx context.Context, a *app.App, opts backupOpts) error {
 			Name: name,
 			Run: func(ctx context.Context) error {
 				a.Printer.Section(i+1, len(sectionNames), name)
-				return runSection(ctx, a, snap, sec.Source,
+
+				// Pre-backup hook.
+				if sec.Hooks.Pre != "" && !opts.dryRun {
+					if err := runHook(ctx, sec.Hooks.Pre, name, "pre"); err != nil {
+						a.Printer.Warn(fmt.Sprintf("%s pre-hook: %v", name, err))
+					}
+				}
+
+				// Merge gitignore patterns into excludes if opted in.
+				excludes := sec.Excludes
+				if sec.GitignoreAware {
+					excludes = mergeExcludes(excludes, gitignore.CollectExcludes(sec.Source, 4))
+				}
+
+				err := runSection(ctx, a, snap, sec.Source,
 					filepath.Join(a.Cfg.Drive.BackupDir, sec.Dest),
-					sec.Excludes, sec.Delete, opts.dryRun,
+					excludes, sec.Delete, opts.dryRun,
 					&totalChanged, &totalArchived, &totalSent, &totalFiles)
+
+				// Post-backup hook (runs even on error).
+				if sec.Hooks.Post != "" && !opts.dryRun {
+					if hookErr := runHook(ctx, sec.Hooks.Post, name, "post"); hookErr != nil {
+						a.Printer.Warn(fmt.Sprintf("%s post-hook: %v", name, hookErr))
+					}
+				}
+
+				return err
 			},
 		})
 	}
@@ -430,4 +455,33 @@ func humanBytes(b int64) string {
 	default:
 		return fmt.Sprintf("%dB", b)
 	}
+}
+
+// runHook executes a shell command string via sh -c, inheriting the current
+// environment. stderr goes to the terminal; a non-zero exit is returned as error.
+func runHook(ctx context.Context, command, section, phase string) error {
+	cmd := exec.CommandContext(ctx, "sh", "-c", command)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("%s %s-hook exited: %w", section, phase, err)
+	}
+	return nil
+}
+
+// mergeExcludes appends extra patterns that aren't already in base.
+func mergeExcludes(base, extra []string) []string {
+	existing := make(map[string]bool, len(base))
+	for _, p := range base {
+		existing[p] = true
+	}
+	out := make([]string, len(base))
+	copy(out, base)
+	for _, p := range extra {
+		if !existing[p] {
+			out = append(out, p)
+			existing[p] = true
+		}
+	}
+	return out
 }

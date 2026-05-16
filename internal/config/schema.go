@@ -20,13 +20,21 @@ type DriveConfig struct {
 	LogDir      string `mapstructure:"logDir"      yaml:"logDir"`
 }
 
+// HooksConfig holds optional shell commands to run before/after a section backup.
+type HooksConfig struct {
+	Pre  string `mapstructure:"pre"  yaml:"pre,omitempty"`
+	Post string `mapstructure:"post" yaml:"post,omitempty"`
+}
+
 // SectionConfig describes one rsync backup section.
 type SectionConfig struct {
-	Enabled  bool     `mapstructure:"enabled"  yaml:"enabled"`
-	Source   string   `mapstructure:"source"   yaml:"source"`   // ~ is expanded at load time
-	Dest     string   `mapstructure:"dest"     yaml:"dest"`
-	Excludes []string `mapstructure:"excludes" yaml:"excludes"`
-	Delete   bool     `mapstructure:"delete"   yaml:"delete"`
+	Enabled        bool        `mapstructure:"enabled"        yaml:"enabled"`
+	Source         string      `mapstructure:"source"         yaml:"source"` // ~ is expanded at load time
+	Dest           string      `mapstructure:"dest"           yaml:"dest"`
+	Excludes       []string    `mapstructure:"excludes"       yaml:"excludes"`
+	Delete         bool        `mapstructure:"delete"         yaml:"delete"`
+	GitignoreAware bool        `mapstructure:"gitignoreAware" yaml:"gitignoreAware,omitempty"`
+	Hooks          HooksConfig `mapstructure:"hooks"          yaml:"hooks,omitempty"`
 }
 
 // PruneConfig holds defaults for the prune command.
