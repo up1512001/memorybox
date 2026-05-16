@@ -1,0 +1,63 @@
+version: 2
+
+project_name: memorybox
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: membox
+    main: ./cmd/memorybox
+    binary: membox
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X main.version={{.Version}}
+      - -X main.commit={{.Commit}}
+      - -X main.date={{.Date}}
+
+archives:
+  - id: membox
+    format: tar.gz
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - README.md
+
+checksum:
+  name_template: "checksums.txt"
+
+snapshot:
+  version_template: "{{ .Tag }}-next"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+
+brews:
+  - name: membox
+    repository:
+      owner: up1512001
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    url_template: "https://github.com/up1512001/memorybox/releases/download/{{ .Tag }}/{{ .ArtifactName }}"
+    commit_author:
+      name: goreleaserbot
+      email: bot@goreleaser.com
+    homepage: "https://github.com/up1512001/memorybox"
+    description: "Memory Box — git-like Mac backup powered by rsync"
+    license: MIT
+    install: |
+      bin.install "membox"
+    test: |
+      system "#{bin}/membox", "--version"
