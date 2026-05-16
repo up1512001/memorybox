@@ -44,22 +44,22 @@ changelog:
       - "^test:"
       - "^chore:"
 
-brews:
-  - name: membox
-    # Skip Homebrew publish when HOMEBREW_TAP_GITHUB_TOKEN is not configured.
-    skip: '{{ if .Env.HOMEBREW_TAP_GITHUB_TOKEN }}false{{ else }}true{{ end }}'
-    repository:
-      owner: up1512001
-      name: homebrew-tap
-      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
-    url_template: "https://github.com/up1512001/memorybox/releases/download/{{ .Tag }}/{{ .ArtifactName }}"
-    commit_author:
-      name: goreleaserbot
-      email: bot@goreleaser.com
-    homepage: "https://github.com/up1512001/memorybox"
-    description: "Memory Box — git-like Mac backup powered by rsync"
-    license: MIT
-    install: |
-      bin.install "membox"
-    test: |
-      system "#{bin}/membox", "--version"
+# Homebrew tap publishing — enabled once the homebrew-tap repo and
+# HOMEBREW_TAP_GITHUB_TOKEN secret are configured in repo settings.
+# brews:
+#   - name: membox
+#     repository:
+#       owner: up1512001
+#       name: homebrew-tap
+#       token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+#     url_template: "https://github.com/up1512001/memorybox/releases/download/{{ .Tag }}/{{ .ArtifactName }}"
+#     commit_author:
+#       name: goreleaserbot
+#       email: bot@goreleaser.com
+#     homepage: "https://github.com/up1512001/memorybox"
+#     description: "Memory Box — git-like Mac backup powered by rsync"
+#     license: MIT
+#     install: |
+#       bin.install "membox"
+#     test: |
+#       system "#{bin}/membox", "--version"
