@@ -4,6 +4,7 @@ package app
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -77,8 +78,14 @@ func (a *App) Init(cfgFile string, noColor bool) error {
 // CheckDrive verifies the backup drive is mounted and has sufficient space.
 func (a *App) CheckDrive(required int64) error {
 	if _, err := os.Stat(a.Cfg.Drive.MountPath); os.IsNotExist(err) {
-		return fmt.Errorf("drive not found at %s — connect your SSD and try again",
-			a.Cfg.Drive.MountPath)
+		msg := fmt.Sprintf("drive not found at %q", a.Cfg.Drive.MountPath)
+		if vols := config.AvailableVolumes(); len(vols) > 0 {
+			msg += fmt.Sprintf("\n  Available volumes: %s", strings.Join(vols, ", "))
+			msg += "\n  Use --drive to override or run `membox init` to reconfigure"
+		} else {
+			msg += "\n  Connect your SSD and try again, or run `membox init` to configure"
+		}
+		return fmt.Errorf("%s", msg)
 	}
 	if required > 0 {
 		ok, err := a.Drive.HasSpace(nil, a.Cfg.Drive.MountPath, required)

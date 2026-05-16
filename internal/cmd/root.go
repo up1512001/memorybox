@@ -29,6 +29,7 @@ func NewRootCmd(a *app.App) *cobra.Command {
 Deleted and overwritten files are archived — nothing is ever lost.
 
 Usage:
+  membox init                    first-time setup (pick drive, configure sections)
   membox                         run a backup (like git commit)
   membox -m "before big refactor" backup with a label
   membox log                     show snapshot history
@@ -64,6 +65,7 @@ Usage:
 	// Attach subcommands.
 	root.AddCommand(
 		newBackupCmd(a),
+		newInitCmd(a),
 		newLogCmd(a),
 		newDiffCmd(a),
 		newRestoreCmd(a),
