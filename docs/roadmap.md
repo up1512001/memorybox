@@ -7,9 +7,9 @@ Kopia). Items ordered by community demand.
 
 ---
 
-## v0.1 — Trust, reliability & Linux support
+## ~~v0.1 — Trust, reliability & Linux support~~ ✅ shipped in v0.1.0
 
-### Ubuntu / Linux support
+### ~~Ubuntu / Linux support~~ ✅
 Full Linux support — not just a build stub.
 
 - `drive_linux.go` — real `Statfs` via `syscall.Statfs_t`, identical to macOS
@@ -18,7 +18,7 @@ Full Linux support — not just a build stub.
 - Linux binaries ship in releases (`linux/amd64`, `linux/arm64`)
 - Install on Ubuntu: `brew install up1512001/tap/membox` (Linuxbrew) or download tarball
 
-### `membox verify` — integrity check
+### ~~`membox verify` — integrity check~~ ✅
 Walk `backup-current/` and compare checksums against the latest manifest.
 Flag files whose size or mtime diverged without a snapshot being taken
 (interrupted rsync, disk corruption). Exit non-zero so it can be scripted.
@@ -26,27 +26,28 @@ Flag files whose size or mtime diverged without a snapshot being taken
 > "Time Machine works fine until it doesn't. And it won't tell you that a backup
 > is broken until you try to restore from it." — Hacker News
 
-### Pinned rsync detection
+### ~~Pinned rsync detection~~ ✅
 Apple replaced rsync with openrsync in Sequoia and broke `--backup-dir` in 15.4.
 Detect at startup if the system rsync is too old and suggest `brew install rsync`.
 
-### macOS failure notifications
-Native macOS notification via `osascript` on backup failure. Non-zero exit codes
-on all commands so cron/launchd scripts can react.
+### ~~macOS / Linux failure notifications~~ ✅
+Native macOS notification via `osascript` on backup success/failure; Linux
+`notify-send` with silent fallback. Non-zero exit codes on all commands so
+cron/launchd scripts can react.
 
 ---
 
-## v0.2 — Developer experience
+## ~~v0.2 — Developer experience~~ ✅ shipped in v0.2.0
 
-### gitignore-aware exclusions
+### ~~gitignore-aware exclusions~~ ✅
 Scan source trees for `.gitignore` files and auto-exclude matched patterns
-(node_modules, vendor, dist, build, etc.). Opt-in via `gitignoreExcludes: true`
+(node_modules, vendor, dist, build, etc.). Opt-in via `gitignoreAware: true`
 on a section.
 
 > "You can exclude specific node_modules folders, but you can't have a global
 > exclusion rule." — MacRumors developer thread
 
-### Pre/post backup hooks
+### ~~Pre/post backup hooks~~ ✅
 
 ```yaml
 sections:
@@ -56,7 +57,7 @@ sections:
       post: "curl -s $SLACK_WEBHOOK -d '{\"text\":\"backup done\"}'"
 ```
 
-### `membox schedule` — LaunchAgent / systemd setup
+### ~~`membox schedule` — LaunchAgent / systemd setup~~ ✅
 - **macOS**: write `com.memorybox.backup.plist` to `~/Library/LaunchAgents`
 - **Linux**: write a `membox-backup.service` + timer to `~/.config/systemd/user/`
 - Includes `--bwlimit` and `nice` options
