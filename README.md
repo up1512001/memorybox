@@ -24,8 +24,7 @@ membox prune --days 90          # clean old archives
 ### Homebrew (recommended)
 
 ```bash
-brew tap up1512001/tap
-brew install membox
+brew install up1512001/tap/membox
 ```
 
 ### Build from source
