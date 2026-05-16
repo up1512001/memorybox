@@ -77,7 +77,7 @@ archive size.
 
 ---
 
-## v0.4 — Cloud sync
+## ~~v0.4 — Cloud sync~~ ✅ shipped in v0.4.0
 
 Back up directly to cloud storage — no physical drive required. Uses rclone as
 the transport layer so any of rclone's 40+ providers work with zero extra code.
