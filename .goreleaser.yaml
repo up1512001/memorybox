@@ -25,7 +25,7 @@ builds:
 
 archives:
   - id: membox
-    format: tar.gz
+    formats: [tar.gz]
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     files:
       - README.md
@@ -44,7 +44,7 @@ changelog:
       - "^test:"
       - "^chore:"
 
-brews:
+homebrew:
   - name: membox
     repository:
       owner: up1512001
