@@ -38,7 +38,8 @@ Usage:
   membox status                  drive health and space
   membox prune                   clean old archives
   membox verify                  check backup integrity against latest manifest
-  membox schedule                install/remove a scheduled backup job`,
+  membox schedule                install/remove a scheduled backup job
+  membox watch                   backup automatically when the drive is connected`,
 		Version: a.Build.Version + " (" + a.Build.Commit + ")",
 		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
 			// Override drive path if --drive flag was set.
@@ -75,6 +76,7 @@ Usage:
 		newPruneCmd(a),
 		newVerifyCmd(a),
 		newScheduleCmd(a),
+		newWatchCmd(a),
 	)
 
 	return root

@@ -12,6 +12,7 @@ import (
 	"github.com/up1512001/memorybox/internal/config"
 	"github.com/up1512001/memorybox/internal/diff"
 	"github.com/up1512001/memorybox/internal/drive"
+	"github.com/up1512001/memorybox/internal/index"
 	"github.com/up1512001/memorybox/internal/output"
 	"github.com/up1512001/memorybox/internal/prune"
 	"github.com/up1512001/memorybox/internal/restore"
@@ -38,6 +39,7 @@ type App struct {
 	Scanner *restore.Scanner
 	Rsync   rsync.Runner
 	Drive   *drive.Prober
+	Index   *index.Index
 }
 
 // New creates an App with all subsystems lazy-initialised after flag parsing.
@@ -72,6 +74,13 @@ func (a *App) Init(cfgFile string, noColor bool) error {
 	a.Differ = diff.New(a.Store)
 	a.Pruner = prune.New(a.Store)
 	a.Scanner = restore.New(a.Store, cfg.Drive.BackupDir, cfg.Drive.ArchiveDir)
+
+	// Index is optional — open if the manifest dir exists, skip silently otherwise.
+	if cfg.Drive.ManifestDir != "" {
+		if idx, err := index.Open(cfg.Drive.ManifestDir); err == nil {
+			a.Index = idx
+		}
+	}
 	return nil
 }
 

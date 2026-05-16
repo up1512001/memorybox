@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -365,6 +366,23 @@ func generateManifest(ctx context.Context, a *app.App, snap snapshot.Snapshot,
 			return err
 		}
 	}
+
+	// Populate BoltDB index for instant restore lookups.
+	if a.Index != nil {
+		i := 0
+		indexErr := a.Index.IndexFromReader(snap.Key, func() (string, int64, time.Time, error) {
+			if i >= len(entries) {
+				return "", 0, time.Time{}, io.EOF
+			}
+			e := entries[i]
+			i++
+			return e.Path, e.Size, e.MTime, nil
+		})
+		if indexErr != nil {
+			a.Printer.Warn(fmt.Sprintf("index: %v", indexErr))
+		}
+	}
+
 	return nil
 }
 
