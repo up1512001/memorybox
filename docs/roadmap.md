@@ -7,9 +7,16 @@ Kopia). Items ordered by community demand.
 
 ---
 
-## v0.1 — Trust & reliability
+## v0.1 — Trust, reliability & Linux support
 
-The #1 complaint across every forum: backups look fine until restore fails.
+### Ubuntu / Linux support
+Full Linux support — not just a build stub.
+
+- `drive_linux.go` — real `Statfs` via `syscall.Statfs_t`, identical to macOS
+- `volumes_linux.go` — scans `/media/$USER`, `/run/media/$USER` (Fedora), `/mnt`
+  for actual mount points using device-ID comparison (not guessing)
+- Linux binaries ship in releases (`linux/amd64`, `linux/arm64`)
+- Install on Ubuntu: `brew install up1512001/tap/membox` (Linuxbrew) or download tarball
 
 ### `membox verify` — integrity check
 Walk `backup-current/` and compare checksums against the latest manifest.
@@ -23,9 +30,6 @@ Flag files whose size or mtime diverged without a snapshot being taken
 Apple replaced rsync with openrsync in Sequoia and broke `--backup-dir` in 15.4.
 Detect at startup if the system rsync is too old and suggest `brew install rsync`.
 
-> "Apple's command-line tools are unreliable and shouldn't be trusted for
-> critical tasks." — mjtsai.com
-
 ### macOS failure notifications
 Native macOS notification via `osascript` on backup failure. Non-zero exit codes
 on all commands so cron/launchd scripts can react.
@@ -34,20 +38,15 @@ on all commands so cron/launchd scripts can react.
 
 ## v0.2 — Developer experience
 
-Most-requested features from the developer segment.
-
 ### gitignore-aware exclusions
 Scan source trees for `.gitignore` files and auto-exclude matched patterns
-(node_modules, vendor, dist, build, etc.). Replaces the tools tmignore and
-asimov, both built specifically because no backup tool handles this.
+(node_modules, vendor, dist, build, etc.). Opt-in via `gitignoreExcludes: true`
+on a section.
 
 > "You can exclude specific node_modules folders, but you can't have a global
 > exclusion rule." — MacRumors developer thread
 
-Opt-in per section via `gitignoreExcludes: true` in config.
-
 ### Pre/post backup hooks
-Run a shell command before or after each section or the full snapshot.
 
 ```yaml
 sections:
@@ -57,17 +56,10 @@ sections:
       post: "curl -s $SLACK_WEBHOOK -d '{\"text\":\"backup done\"}'"
 ```
 
-Covers the top use cases: database dump before backup, Slack/Discord notification
-after, NAS wake/sleep.
-
-### `membox schedule` — LaunchAgent setup
-Write a `com.memorybox.backup.plist` to `~/Library/LaunchAgents` and load it.
-Scheduled backups without manually wiring launchd. Includes rsync `--bwlimit`
-and `nice` options so backup doesn't saturate the connection or peg CPU.
-
-> "To use restic I'd have to wrap it in my own backup script and run it via
-> launchd — implementing notifications, bandwidth throttling and CPU limits
-> requires custom scripting." — dzombak.com
+### `membox schedule` — LaunchAgent / systemd setup
+- **macOS**: write `com.memorybox.backup.plist` to `~/Library/LaunchAgents`
+- **Linux**: write a `membox-backup.service` + timer to `~/.config/systemd/user/`
+- Includes `--bwlimit` and `nice` options
 
 ---
 
@@ -75,54 +67,88 @@ and `nice` options so backup doesn't saturate the connection or peg CPU.
 
 ### BoltDB index for instant restore
 `membox restore` currently walks all archive dirs linearly. Index filenames +
-snapshot keys in BoltDB (`go.etcd.io/bbolt`, CGO-free). Makes restore instant
-regardless of archive size.
+snapshot keys in BoltDB (`go.etcd.io/bbolt`, CGO-free). Instant regardless of
+archive size.
 
-### `membox watch` — backup on drive connect
-Use FSEvents to detect when the configured SSD is plugged in and trigger a
-backup automatically. Top-requested "set and forget" feature across all forums.
+### `membox watch` — backup on storage connect
+- **macOS**: FSEvents on `/Volumes`
+- **Linux**: inotify on `/media/$USER` via `fsnotify`
 
 ---
 
-## v0.4 — Security
+## v0.4 — Cloud sync
+
+Back up directly to cloud storage — no physical drive required. Uses rclone as
+the transport layer so any of rclone's 40+ providers work with zero extra code.
+
+### Architecture
+`rsync.Runner` is already an interface. Add `RcloneRunner` that wraps `rclone sync`
+with the same `--itemize-changes` output parsing. The manifest, snapshot, diff,
+restore, and prune packages stay unchanged — they operate on metadata, not transport.
+
+```yaml
+drive:
+  backend: rclone             # "local" (default) or "rclone"
+  rclonePath: "r2:my-bucket/membox"   # any rclone remote:path
+```
+
+### Supported backends (via rclone)
+
+| Provider | Config example |
+|----------|---------------|
+| Cloudflare R2 | `r2:bucket-name/membox` |
+| AWS S3 | `s3:bucket-name/membox` |
+| Backblaze B2 | `b2:bucket-name/membox` |
+| Google Cloud Storage | `gcs:bucket-name/membox` |
+| Any S3-compatible | custom rclone remote |
+
+### Archive strategy for cloud
+`rsync --backup-dir` doesn't work remotely. Replace with a pre-backup step that
+copies changed files to a dated archive prefix before syncing:
+`r2:bucket/membox/archive/2026-05-16T14-30-00Z/` — same layout as local.
+
+### Manifest sync
+After each backup, push the `.manifest` file to the cloud path. On restore,
+pull the latest manifest to a local cache dir (`~/.cache/memorybox/manifests/`).
+
+### Initial implementation scope
+- `membox backup` with `rclone` backend
+- `membox log` from cached manifests
+- `membox restore` from cloud (rclone copy individual file)
+- `membox diff` from cached manifests
+
+---
+
+## v0.5 — Security
 
 ### Manifest encryption (`age`)
 Optionally encrypt `.manifest` files using `filippo.io/age`. Manifests reveal
 filenames, sizes, and mtimes — worth protecting for sensitive sections
-(`.ssh`, `.gnupg`, financial docs). File data is not stored by membox (rsync
-writes directly to drive).
-
-> "Even if you trust a third party, if it holds the private encryption keys to
-> your data then it can get hacked." — privacy forum thread
+(`.ssh`, `.gnupg`, financial docs).
 
 ---
 
-## v0.5 — Remote destinations
+## v0.6 — Remote NAS (rsync-over-SSH)
 
-### rsync-over-SSH to NAS
-Time Machine over SMB to Synology/QNAP is extensively documented as broken —
-periodic corruption, CPU pegging, requires full restart after failure. rsync-over-SSH
-is the proven alternative.
+For users who want the local-drive experience but over the network.
 
 ```yaml
 drive:
-  mountPath: "user@nas.local:/volume1/membox-backup"
-  protocol: ssh
+  backend: ssh
+  sshPath: "user@nas.local:/volume1/membox-backup"
 ```
 
-Requires abstracting local-path assumptions in `snapshot.Store` and `drive.Prober`.
-
-> "I could never get TM backup to Synology to work without corruption after a
-> month or two." — SNBForums
+Time Machine over SMB to Synology/QNAP is extensively documented as broken.
+rsync-over-SSH is the reliable alternative.
 
 ---
 
 ## Long-term / exploratory
 
-- **APFS snapshot source** — `tmutil snapshot` before rsync for consistent point-in-time capture; avoids "file changed during backup" errors in Photos and large repos
-- **Block-level delta** — chunked hashing for large files (databases, VM images); significant architecture change
-- **Multi-machine consolidation** — multiple Macs to one NAS under separate prefixes, `membox log --all` aggregates
-- **`membox serve`** — local read-only web dashboard for history, diff, and restore preview; reuses existing packages
+- **APFS snapshot source** — `tmutil snapshot` before rsync for consistent point-in-time capture
+- **Block-level delta** — chunked hashing for large files (databases, VM images)
+- **Multi-machine consolidation** — multiple machines to one NAS/bucket, `membox log --all`
+- **`membox serve`** — local read-only web dashboard for history, diff, restore preview
 
 ---
 
@@ -130,8 +156,7 @@ Requires abstracting local-path assumptions in `snapshot.Store` and `drive.Probe
 
 | Item | Reason |
 |------|--------|
-| Windows support | `/Volumes/`, FSEvents, and rsync semantics are macOS/Linux only |
-| Cloud-only storage | Designed around local + NAS drives |
+| Windows support | FSEvents, `/Volumes/`, rsync semantics are macOS/Linux only |
 | GUI app | CLI UX is the product |
-| Bootable clone | Deprecated by Apple in macOS 15.2; CCC and SuperDuper are already broken |
+| Bootable clone | Apple deprecated in macOS 15.2; CCC and SuperDuper are already broken |
 | Proprietary format | Everything is plain rsync output + tab-delimited manifests |
