@@ -46,6 +46,9 @@ changelog:
 
 homebrew:
   - name: membox
+    # Skip Homebrew publish when HOMEBREW_TAP_GITHUB_TOKEN is not configured.
+    # Set up the tap repo and add the secret to enable this.
+    skip: '{{ if .Env.HOMEBREW_TAP_GITHUB_TOKEN }}false{{ else }}true{{ end }}'
     repository:
       owner: up1512001
       name: homebrew-tap
