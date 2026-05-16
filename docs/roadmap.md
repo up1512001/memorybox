@@ -64,14 +64,14 @@ sections:
 
 ---
 
-## v0.3 — Storage & speed
+## ~~v0.3 — Storage & speed~~ ✅ shipped in v0.3.0
 
-### BoltDB index for instant restore
+### ~~BoltDB index for instant restore~~ ✅
 `membox restore` currently walks all archive dirs linearly. Index filenames +
 snapshot keys in BoltDB (`go.etcd.io/bbolt`, CGO-free). Instant regardless of
 archive size.
 
-### `membox watch` — backup on storage connect
+### ~~`membox watch` — backup on storage connect~~ ✅
 - **macOS**: FSEvents on `/Volumes`
 - **Linux**: inotify on `/media/$USER` via `fsnotify`
 
