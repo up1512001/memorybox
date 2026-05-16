@@ -1,3 +1,5 @@
+//go:build darwin
+
 // Package drive probes the external backup drive for health and space.
 package drive
 

@@ -1,0 +1,24 @@
+{
+  "name": "Memory Box",
+  "image": "mcr.microsoft.com/devcontainers/go:1.22",
+  "features": {
+    "ghcr.io/devcontainers/features/go:1": {
+      "version": "1.22"
+    }
+  },
+  "postCreateCommand": "go mod tidy && go build ./...",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "golang.go"
+      ],
+      "settings": {
+        "go.toolsManagement.autoUpdate": true
+      }
+    }
+  },
+  "remoteEnv": {
+    "GOPATH": "/go",
+    "GOBIN": "/go/bin"
+  }
+}
