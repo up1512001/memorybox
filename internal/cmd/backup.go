@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -356,14 +357,38 @@ func appendHistory(a *app.App, key string, files, changed, archived, sent int64)
 }
 
 func enabledSections(a *app.App, requested []string) []string {
-	order := []string{"photos", "movies", "docs", "desktop", "downloads", "icloud", "dev", "localsites"}
 	if len(requested) > 0 {
-		order = requested
+		var out []string
+		for _, name := range requested {
+			if sec, ok := a.Cfg.Sections[name]; ok && sec.Enabled && name != "config" {
+				out = append(out, name)
+			}
+		}
+		return out
 	}
+
+	// Built-in sections in canonical order, then any custom sections alphabetically.
+	builtIn := []string{"photos", "movies", "docs", "desktop", "downloads", "icloud", "dev", "localsites"}
+	seen := make(map[string]bool, len(builtIn)+1)
+	seen["config"] = true
+
 	var out []string
-	for _, name := range order {
-		sec, ok := a.Cfg.Sections[name]
-		if ok && sec.Enabled && name != "config" {
+	for _, name := range builtIn {
+		seen[name] = true
+		if sec, ok := a.Cfg.Sections[name]; ok && sec.Enabled {
+			out = append(out, name)
+		}
+	}
+
+	var custom []string
+	for name := range a.Cfg.Sections {
+		if !seen[name] {
+			custom = append(custom, name)
+		}
+	}
+	sort.Strings(custom)
+	for _, name := range custom {
+		if sec := a.Cfg.Sections[name]; sec.Enabled {
 			out = append(out, name)
 		}
 	}

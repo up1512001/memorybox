@@ -22,7 +22,8 @@ func newInitCmd(a *app.App) *cobra.Command {
   1. Pick which external drive to back up to
   2. Choose which sections (folders) to back up
   3. Configure exclude patterns per section
-  4. Write ~/.config/memorybox/config.yaml`,
+  4. Add custom folders (any path on your Mac)
+  5. Write ~/.config/memorybox/config.yaml`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runInit(a, os.Stdin, os.Stdout)
 		},
@@ -45,6 +46,7 @@ func runInit(a *app.App, stdin *os.File, stdout *os.File) error {
 	}
 
 	sections = wizardConfigureExcludes(in, stdout, sections)
+	sections = wizardAddCustomFolders(in, stdout, sections)
 
 	cfg := a.Cfg
 	cfg.Drive.MountPath = mountPath
@@ -82,7 +84,7 @@ func printWizardBanner(w io.Writer) {
 }
 
 func wizardPickDrive(in *bufio.Reader, w io.Writer) (string, error) {
-	fmt.Fprintln(w, "Step 1 of 3  —  Backup drive")
+	fmt.Fprintln(w, "Step 1 of 4  —  Backup drive")
 	fmt.Fprintln(w)
 
 	vols := config.AvailableVolumes()
@@ -129,7 +131,7 @@ func wizardPickDrive(in *bufio.Reader, w io.Writer) (string, error) {
 
 func wizardPickSections(in *bufio.Reader, w io.Writer, current map[string]config.SectionConfig) (map[string]config.SectionConfig, error) {
 	fmt.Fprintln(w)
-	fmt.Fprintln(w, "Step 2 of 3  —  Sections to back up")
+	fmt.Fprintln(w, "Step 2 of 4  —  Sections to back up")
 	fmt.Fprintln(w)
 
 	order := wizardSectionOrder()
@@ -161,7 +163,7 @@ func wizardPickSections(in *bufio.Reader, w io.Writer, current map[string]config
 
 func wizardConfigureExcludes(in *bufio.Reader, w io.Writer, sections map[string]config.SectionConfig) map[string]config.SectionConfig {
 	fmt.Fprintln(w)
-	fmt.Fprintln(w, "Step 3 of 3  —  Exclude patterns")
+	fmt.Fprintln(w, "Step 3 of 4  —  Exclude patterns")
 	fmt.Fprintln(w)
 
 	result := cloneSections(sections)
@@ -201,14 +203,92 @@ func printConfigPreview(w io.Writer, cfg config.Config, cfgPath string) {
 	fmt.Fprintf(w, "  Path:     %s\n", cfgPath)
 	fmt.Fprintf(w, "  Drive:    %s\n", cfg.Drive.MountPath)
 
-	var enabled []string
-	for _, name := range wizardSectionOrder() {
+	builtIn := wizardSectionOrder()
+	builtInSet := make(map[string]bool, len(builtIn))
+	for _, n := range builtIn {
+		builtInSet[n] = true
+	}
+
+	var enabled, custom []string
+	for _, name := range builtIn {
 		if s, ok := cfg.Sections[name]; ok && s.Enabled {
 			enabled = append(enabled, name)
 		}
 	}
+	for name, s := range cfg.Sections {
+		if !builtInSet[name] && s.Enabled {
+			custom = append(custom, name)
+		}
+	}
 	fmt.Fprintf(w, "  Sections: %s\n", strings.Join(enabled, ", "))
+	if len(custom) > 0 {
+		fmt.Fprintf(w, "  Custom:   %s\n", strings.Join(custom, ", "))
+	}
 	fmt.Fprintln(w)
+}
+
+func wizardAddCustomFolders(in *bufio.Reader, w io.Writer, sections map[string]config.SectionConfig) map[string]config.SectionConfig {
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "Step 4 of 4  —  Custom folders")
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "  Back up any folder not in the list above.")
+	fmt.Fprintln(w, "  Example: ~/Work/Projects → section name \"work\"")
+	fmt.Fprintln(w)
+
+	result := cloneSections(sections)
+
+	for {
+		fmt.Fprintf(w, "Add a custom folder? [y/N]: ")
+		ans := strings.ToLower(readLine(in))
+		if ans != "y" && ans != "yes" {
+			break
+		}
+
+		fmt.Fprintf(w, "  Source path (e.g. ~/Projects): ")
+		src := readLine(in)
+		if src == "" {
+			fmt.Fprintln(w, "  Source path cannot be empty — skipped.")
+			continue
+		}
+
+		// Expand ~ manually for display (config.Load does full expansion at runtime)
+		if strings.HasPrefix(src, "~/") {
+			home, _ := os.UserHomeDir()
+			src = home + src[1:]
+		}
+
+		fmt.Fprintf(w, "  Section name (letters/numbers/hyphens, used as folder on drive): ")
+		name := strings.ToLower(strings.TrimSpace(readLine(in)))
+		if name == "" || name == "config" {
+			fmt.Fprintln(w, "  Invalid name — skipped.")
+			continue
+		}
+		if _, exists := result[name]; exists {
+			fmt.Fprintf(w, "  Section %q already exists — skipped.\n", name)
+			continue
+		}
+
+		fmt.Fprintf(w, "  Exclude patterns (comma-separated, or Enter for none): ")
+		var excludes []string
+		if line := readLine(in); line != "" {
+			for _, p := range strings.Split(line, ",") {
+				if p = strings.TrimSpace(p); p != "" {
+					excludes = append(excludes, p)
+				}
+			}
+		}
+
+		result[name] = config.SectionConfig{
+			Enabled:  true,
+			Source:   src,
+			Dest:     name,
+			Excludes: excludes,
+			Delete:   true,
+		}
+		fmt.Fprintf(w, "  ✓ Added section %q → %s\n\n", name, src)
+	}
+
+	return result
 }
 
 func wizardConfirmWrite(in *bufio.Reader, w io.Writer, cfgPath string) bool {
