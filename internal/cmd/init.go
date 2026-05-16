@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -35,7 +36,7 @@ func runInit(a *app.App, stdin *os.File, stdout *os.File) error {
 
 	printWizardBanner(stdout)
 
-	mountPath, err := wizardPickDrive(in, stdout)
+	backend, err := wizardPickBackend(in, stdout)
 	if err != nil {
 		return err
 	}
@@ -49,12 +50,30 @@ func runInit(a *app.App, stdin *os.File, stdout *os.File) error {
 	sections = wizardAddCustomFolders(in, stdout, sections)
 
 	cfg := a.Cfg
-	cfg.Drive.MountPath = mountPath
-	cfg.Drive.BackupDir = mountPath + "/backup-current"
-	cfg.Drive.ArchiveDir = mountPath + "/backup-archive"
-	cfg.Drive.ManifestDir = mountPath + "/backup-manifests"
-	cfg.Drive.LogDir = mountPath + "/backup-logs"
 	cfg.Sections = sections
+
+	if backend == "rclone" {
+		rclonePath, err := wizardPickRcloneRemote(in, stdout)
+		if err != nil {
+			return err
+		}
+		cfg.Drive.Backend = "rclone"
+		cfg.Drive.RclonePath = rclonePath
+		home, _ := os.UserHomeDir()
+		cfg.Drive.CacheDir = filepath.Join(home, ".cache", "memorybox")
+		cfg.Drive.CacheTTL = 24
+	} else {
+		mountPath, err := wizardPickDrive(in, stdout)
+		if err != nil {
+			return err
+		}
+		cfg.Drive.Backend = ""
+		cfg.Drive.MountPath = mountPath
+		cfg.Drive.BackupDir = mountPath + "/backup-current"
+		cfg.Drive.ArchiveDir = mountPath + "/backup-archive"
+		cfg.Drive.ManifestDir = mountPath + "/backup-manifests"
+		cfg.Drive.LogDir = mountPath + "/backup-logs"
+	}
 
 	cfgPath := defaultConfigPath()
 
@@ -83,8 +102,69 @@ func printWizardBanner(w io.Writer) {
 	fmt.Fprintln(w)
 }
 
+func wizardPickBackend(in *bufio.Reader, w io.Writer) (string, error) {
+	fmt.Fprintln(w, "Step 1 of 5  —  Storage backend")
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "  [1] External USB/SSD drive (default)")
+	fmt.Fprintln(w, "  [2] Cloud storage — Cloudflare R2, S3, Backblaze B2, etc. (via rclone)")
+	fmt.Fprintln(w)
+	fmt.Fprintf(w, "Pick backend [1]: ")
+	line := readLine(in)
+	if line == "2" {
+		return "rclone", nil
+	}
+	return "local", nil
+}
+
+func wizardPickRcloneRemote(in *bufio.Reader, w io.Writer) (string, error) {
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "Cloud storage setup")
+	fmt.Fprintln(w, strings.Repeat("─", 52))
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "  membox uses rclone as transport. Configure your remote")
+	fmt.Fprintln(w, "  with `rclone config` before continuing.")
+	fmt.Fprintln(w)
+
+	// Show available remotes if rclone is installed.
+	if remotes := listRcloneRemotes(); len(remotes) > 0 {
+		fmt.Fprintln(w, "  Available rclone remotes:")
+		for _, r := range remotes {
+			fmt.Fprintf(w, "    • %s\n", r)
+		}
+		fmt.Fprintln(w)
+	}
+
+	fmt.Fprintln(w, "  Recommended: Cloudflare R2 (zero egress cost)")
+	fmt.Fprintln(w, "  Example paths:")
+	fmt.Fprintln(w, "    r2:my-bucket/membox")
+	fmt.Fprintln(w, "    s3:my-bucket/membox")
+	fmt.Fprintln(w, "    b2:my-bucket/membox")
+	fmt.Fprintln(w)
+	fmt.Fprintf(w, "  Remote path: ")
+
+	path := readLine(in)
+	if path == "" {
+		return "", fmt.Errorf("remote path cannot be empty — run `rclone config` to set up a remote")
+	}
+	return path, nil
+}
+
+func listRcloneRemotes() []string {
+	out, err := exec.Command("rclone", "listremotes").Output()
+	if err != nil {
+		return nil
+	}
+	var remotes []string
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		if line = strings.TrimSpace(line); line != "" {
+			remotes = append(remotes, line)
+		}
+	}
+	return remotes
+}
+
 func wizardPickDrive(in *bufio.Reader, w io.Writer) (string, error) {
-	fmt.Fprintln(w, "Step 1 of 4  —  Backup drive")
+	fmt.Fprintln(w, "Step 2 of 5  —  Backup drive")
 	fmt.Fprintln(w)
 
 	vols := config.AvailableVolumes()
@@ -131,7 +211,7 @@ func wizardPickDrive(in *bufio.Reader, w io.Writer) (string, error) {
 
 func wizardPickSections(in *bufio.Reader, w io.Writer, current map[string]config.SectionConfig) (map[string]config.SectionConfig, error) {
 	fmt.Fprintln(w)
-	fmt.Fprintln(w, "Step 2 of 4  —  Sections to back up")
+	fmt.Fprintln(w, "Step 3 of 5  —  Sections to back up")
 	fmt.Fprintln(w)
 
 	order := wizardSectionOrder()
@@ -163,7 +243,7 @@ func wizardPickSections(in *bufio.Reader, w io.Writer, current map[string]config
 
 func wizardConfigureExcludes(in *bufio.Reader, w io.Writer, sections map[string]config.SectionConfig) map[string]config.SectionConfig {
 	fmt.Fprintln(w)
-	fmt.Fprintln(w, "Step 3 of 4  —  Exclude patterns")
+	fmt.Fprintln(w, "Step 4 of 5  —  Exclude patterns")
 	fmt.Fprintln(w)
 
 	result := cloneSections(sections)
@@ -229,7 +309,7 @@ func printConfigPreview(w io.Writer, cfg config.Config, cfgPath string) {
 
 func wizardAddCustomFolders(in *bufio.Reader, w io.Writer, sections map[string]config.SectionConfig) map[string]config.SectionConfig {
 	fmt.Fprintln(w)
-	fmt.Fprintln(w, "Step 4 of 4  —  Custom folders")
+	fmt.Fprintln(w, "Step 5 of 5  —  Custom folders")
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "  Back up any folder not in the list above.")
 	fmt.Fprintln(w, "  Example: ~/Work/Projects → section name \"work\"")

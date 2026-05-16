@@ -30,19 +30,24 @@ func runStatus(ctx context.Context, a *app.App) error {
 	fmt.Println("Backup Status")
 	fmt.Println("─────────────────────────────────────────────────────────")
 
-	// Drive info.
-	info, err := a.Drive.Probe(ctx, a.Cfg.Drive.MountPath)
-	if err == nil {
-		pct := int(float64(info.UsedBytes) / float64(info.TotalBytes) * 100)
-		bar := progressBar(pct, 30)
-		fmt.Printf("Drive:     %s  [%s] %d%% used\n",
-			a.Cfg.Drive.MountPath, bar, pct)
-		fmt.Printf("           %s free of %s total\n",
-			color.Green(humanBytes(info.FreeBytes)),
-			humanBytes(info.TotalBytes),
-		)
-		if info.FreeBytes < 5<<30 { // < 5GB
-			fmt.Printf("           %s\n", color.Red("⚠ low disk space"))
+	// Drive / cloud info.
+	if a.Cfg.Drive.Backend == "rclone" {
+		fmt.Printf("Backend:   rclone → %s\n", color.Cyan(a.Cfg.Drive.RclonePath))
+		fmt.Printf("Cache:     %s\n", a.Cfg.Drive.CacheDir)
+	} else {
+		info, err := a.Drive.Probe(ctx, a.Cfg.Drive.MountPath)
+		if err == nil {
+			pct := int(float64(info.UsedBytes) / float64(info.TotalBytes) * 100)
+			bar := progressBar(pct, 30)
+			fmt.Printf("Drive:     %s  [%s] %d%% used\n",
+				a.Cfg.Drive.MountPath, bar, pct)
+			fmt.Printf("           %s free of %s total\n",
+				color.Green(humanBytes(info.FreeBytes)),
+				humanBytes(info.TotalBytes),
+			)
+			if info.FreeBytes < 5<<30 { // < 5GB
+				fmt.Printf("           %s\n", color.Red("⚠ low disk space"))
+			}
 		}
 	}
 

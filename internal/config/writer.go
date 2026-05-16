@@ -27,7 +27,19 @@ func renderConfig(w io.Writer, cfg Config) error {
 	fmt.Fprintf(w, "# Priority: CLI flags > MEMBOX_* env vars > this file > defaults\n\n")
 
 	fmt.Fprintf(w, "drive:\n")
-	fmt.Fprintf(w, "  mountPath: %q\n\n", cfg.Drive.MountPath)
+	if cfg.Drive.Backend == "rclone" {
+		fmt.Fprintf(w, "  backend: rclone\n")
+		fmt.Fprintf(w, "  rclonePath: %q\n", cfg.Drive.RclonePath)
+		if cfg.Drive.CacheDir != "" {
+			fmt.Fprintf(w, "  cacheDir: %q\n", cfg.Drive.CacheDir)
+		}
+		if cfg.Drive.CacheTTL > 0 {
+			fmt.Fprintf(w, "  cacheTTL: %d\n", cfg.Drive.CacheTTL)
+		}
+	} else {
+		fmt.Fprintf(w, "  mountPath: %q\n", cfg.Drive.MountPath)
+	}
+	fmt.Fprintln(w)
 
 	fmt.Fprintf(w, "parallel: %d\n\n", cfg.Parallel)
 

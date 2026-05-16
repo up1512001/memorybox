@@ -11,13 +11,20 @@ type Config struct {
 	UI       UIConfig                 `mapstructure:"ui"       yaml:"ui"`
 }
 
-// DriveConfig describes where backups land on the external drive.
+// DriveConfig describes where backups land — local drive or cloud storage.
 type DriveConfig struct {
-	MountPath   string `mapstructure:"mountPath"   yaml:"mountPath"`
-	BackupDir   string `mapstructure:"backupDir"   yaml:"backupDir"`
-	ArchiveDir  string `mapstructure:"archiveDir"  yaml:"archiveDir"`
-	ManifestDir string `mapstructure:"manifestDir" yaml:"manifestDir"`
-	LogDir      string `mapstructure:"logDir"      yaml:"logDir"`
+	// Local drive fields (backend: local or empty)
+	MountPath   string `mapstructure:"mountPath"   yaml:"mountPath,omitempty"`
+	BackupDir   string `mapstructure:"backupDir"   yaml:"backupDir,omitempty"`
+	ArchiveDir  string `mapstructure:"archiveDir"  yaml:"archiveDir,omitempty"`
+	ManifestDir string `mapstructure:"manifestDir" yaml:"manifestDir,omitempty"`
+	LogDir      string `mapstructure:"logDir"      yaml:"logDir,omitempty"`
+
+	// Cloud / rclone fields (backend: rclone)
+	Backend    string `mapstructure:"backend"    yaml:"backend,omitempty"`    // "local" (default) | "rclone"
+	RclonePath string `mapstructure:"rclonePath" yaml:"rclonePath,omitempty"` // e.g. "r2:my-bucket/membox"
+	CacheDir   string `mapstructure:"cacheDir"   yaml:"cacheDir,omitempty"`   // local manifest cache; defaults to ~/.cache/memorybox
+	CacheTTL   int    `mapstructure:"cacheTTL"   yaml:"cacheTTL,omitempty"`   // hours before manifest cache is considered stale (default 24)
 }
 
 // HooksConfig holds optional shell commands to run before/after a section backup.

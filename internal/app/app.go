@@ -4,10 +4,12 @@ package app
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"github.com/up1512001/memorybox/internal/cache"
 	"github.com/up1512001/memorybox/internal/color"
 	"github.com/up1512001/memorybox/internal/config"
 	"github.com/up1512001/memorybox/internal/diff"
@@ -15,6 +17,7 @@ import (
 	"github.com/up1512001/memorybox/internal/index"
 	"github.com/up1512001/memorybox/internal/output"
 	"github.com/up1512001/memorybox/internal/prune"
+	rc "github.com/up1512001/memorybox/internal/rclone"
 	"github.com/up1512001/memorybox/internal/restore"
 	"github.com/up1512001/memorybox/internal/rsync"
 	"github.com/up1512001/memorybox/internal/snapshot"
@@ -29,17 +32,18 @@ type BuildInfo struct {
 
 // App holds all wired-up subsystems.
 type App struct {
-	Build   BuildInfo
-	V       *viper.Viper
-	Cfg     config.Config
-	Printer output.Printer
-	Store   *snapshot.Store
-	Differ  *diff.Differ
-	Pruner  *prune.Pruner
-	Scanner *restore.Scanner
-	Rsync   rsync.Runner
-	Drive   *drive.Prober
-	Index   *index.Index
+	Build         BuildInfo
+	V             *viper.Viper
+	Cfg           config.Config
+	Printer       output.Printer
+	Store         *snapshot.Store
+	Differ        *diff.Differ
+	Pruner        *prune.Pruner
+	Scanner       *restore.Scanner
+	Rsync         rsync.Runner
+	Drive         *drive.Prober
+	Index         *index.Index
+	ManifestCache *cache.ManifestCache
 }
 
 // New creates an App with all subsystems lazy-initialised after flag parsing.
@@ -59,7 +63,6 @@ func (a *App) Init(cfgFile string, noColor bool) error {
 	if err != nil {
 		return err
 	}
-	a.Cfg = cfg
 
 	// Color must be initialised before any output.
 	color.Init(noColor || !cfg.UI.Color)
@@ -69,6 +72,26 @@ func (a *App) Init(cfgFile string, noColor bool) error {
 	} else {
 		a.Printer = output.NewTTY(os.Stdout)
 	}
+
+	// For cloud backends, redirect manifests to local cache and pick rclone runner.
+	if cfg.Drive.Backend == "rclone" {
+		cacheDir := cfg.Drive.CacheDir
+		if cacheDir == "" {
+			home, _ := os.UserHomeDir()
+			cacheDir = filepath.Join(home, ".cache", "memorybox")
+		}
+		cfg.Drive.ManifestDir = filepath.Join(cacheDir, "manifests", encodeRemote(cfg.Drive.RclonePath))
+		cfg.Drive.LogDir = filepath.Join(cacheDir, "logs")
+		os.MkdirAll(cfg.Drive.ManifestDir, 0o755) //nolint:errcheck
+		os.MkdirAll(cfg.Drive.LogDir, 0o755)       //nolint:errcheck
+		a.Rsync = &rc.Runner{}
+
+		mc, err := cache.New(cacheDir, cfg.Drive.RclonePath, "", cfg.Drive.CacheTTL)
+		if err == nil {
+			a.ManifestCache = mc
+		}
+	}
+	a.Cfg = cfg
 
 	a.Store = snapshot.NewStore(cfg.Drive.ManifestDir, cfg.Drive.ArchiveDir)
 	a.Differ = diff.New(a.Store)
@@ -84,8 +107,12 @@ func (a *App) Init(cfgFile string, noColor bool) error {
 	return nil
 }
 
-// CheckDrive verifies the backup drive is mounted and has sufficient space.
+// CheckDrive verifies the backup destination is reachable.
+// For cloud backends this is a no-op (rclone handles connectivity).
 func (a *App) CheckDrive(required int64) error {
+	if a.Cfg.Drive.Backend == "rclone" {
+		return nil
+	}
 	if _, err := os.Stat(a.Cfg.Drive.MountPath); os.IsNotExist(err) {
 		msg := fmt.Sprintf("drive not found at %q", a.Cfg.Drive.MountPath)
 		if vols := config.AvailableVolumes(); len(vols) > 0 {
@@ -105,6 +132,10 @@ func (a *App) CheckDrive(required int64) error {
 		}
 	}
 	return nil
+}
+
+func encodeRemote(remote string) string {
+	return strings.NewReplacer(":", "%3A", "/", "%2F").Replace(remote)
 }
 
 // RootCmd builds the root cobra command with all subcommands attached.

@@ -16,6 +16,7 @@ import (
 	"github.com/up1512001/memorybox/internal/gitignore"
 	"github.com/up1512001/memorybox/internal/manifest"
 	"github.com/up1512001/memorybox/internal/notify"
+	rc "github.com/up1512001/memorybox/internal/rclone"
 	"github.com/up1512001/memorybox/internal/rsync"
 	"github.com/up1512001/memorybox/internal/scheduler"
 	"github.com/up1512001/memorybox/internal/snapshot"
@@ -138,8 +139,9 @@ func runBackup(ctx context.Context, a *app.App, opts backupOpts) error {
 					excludes = mergeExcludes(excludes, gitignore.CollectExcludes(sec.Source, 4))
 				}
 
+				dest := sectionDest(a, sec.Dest)
 				err := runSection(ctx, a, snap, sec.Source,
-					filepath.Join(a.Cfg.Drive.BackupDir, sec.Dest),
+					dest,
 					excludes, sec.Delete, opts.dryRun,
 					&totalChanged, &totalArchived, &totalSent, &totalFiles)
 
@@ -187,6 +189,16 @@ func runBackup(ctx context.Context, a *app.App, opts backupOpts) error {
 	// Append to history CSV.
 	appendHistory(a, snap.Key, totalFiles, totalChanged, totalArchived, totalSent)
 
+	// Push manifest to cloud for rclone backends.
+	if a.Cfg.Drive.Backend == "rclone" && a.ManifestCache != nil {
+		localManifest := filepath.Join(a.Cfg.Drive.ManifestDir, snap.Key+".manifest")
+		if err := a.ManifestCache.Push(ctx, localManifest, snap.Key); err != nil {
+			a.Printer.Warn(fmt.Sprintf("manifest push: %v", err))
+		} else {
+			a.Printer.Info("Manifest pushed to cloud.")
+		}
+	}
+
 	// OS notification.
 	if len(sectionErrors) > 0 {
 		notify.Failure("Memory Box", fmt.Sprintf("Backup %s failed: %s", snap.Key, strings.Join(sectionErrors, ", ")))
@@ -206,19 +218,28 @@ func runSection(ctx context.Context, a *app.App, snap snapshot.Snapshot,
 		return nil
 	}
 
-	if err := os.MkdirAll(dest, 0o755); err != nil {
-		return fmt.Errorf("mkdir %s: %w", dest, err)
+	var args []string
+	if a.Cfg.Drive.Backend == "rclone" {
+		args = rc.BuildSyncArgs(rc.SyncOpts{
+			Source:      src,
+			Destination: dest,
+			Excludes:    excludes,
+			DryRun:      dryRun,
+		})
+	} else {
+		if err := os.MkdirAll(dest, 0o755); err != nil {
+			return fmt.Errorf("mkdir %s: %w", dest, err)
+		}
+		args = rsync.BuildArgs(rsync.SectionRunOpts{
+			Source:      src,
+			Destination: dest,
+			ArchiveDir:  snap.ArchivePath,
+			Excludes:    excludes,
+			Delete:      delete,
+			Verbose:     a.Cfg.UI.Verbose,
+			DryRun:      dryRun,
+		})
 	}
-
-	args := rsync.BuildArgs(rsync.SectionRunOpts{
-		Source:      src,
-		Destination: dest,
-		ArchiveDir:  snap.ArchivePath,
-		Excludes:    excludes,
-		Delete:      delete,
-		Verbose:     a.Cfg.UI.Verbose,
-		DryRun:      dryRun,
-	})
 
 	lines := make(chan rsync.Line, 256)
 	var stats *rsync.Stats
@@ -231,16 +252,26 @@ func runSection(ctx context.Context, a *app.App, snap snapshot.Snapshot,
 	}()
 
 	var sChanged, sArchived int64
+	isCloud := a.Cfg.Drive.Backend == "rclone"
 	for line := range lines {
 		if line.IsError {
 			a.Printer.Warn(line.Raw)
 			continue
 		}
-		if rsync.IsChanged(line.Raw) {
-			sChanged++
-		}
-		if rsync.IsDeleted(line.Raw) {
-			sArchived++
+		if isCloud {
+			if rc.IsChanged(line.Raw) {
+				sChanged++
+			}
+			if rc.IsDeleted(line.Raw) {
+				sArchived++
+			}
+		} else {
+			if rsync.IsChanged(line.Raw) {
+				sChanged++
+			}
+			if rsync.IsDeleted(line.Raw) {
+				sArchived++
+			}
 		}
 	}
 	<-doneCh
@@ -473,6 +504,15 @@ func humanBytes(b int64) string {
 	default:
 		return fmt.Sprintf("%dB", b)
 	}
+}
+
+// sectionDest returns the backup destination path for a section,
+// using the rclone remote path for cloud backends.
+func sectionDest(a *app.App, sectionDest string) string {
+	if a.Cfg.Drive.Backend == "rclone" {
+		return a.Cfg.Drive.RclonePath + "/" + sectionDest
+	}
+	return filepath.Join(a.Cfg.Drive.BackupDir, sectionDest)
 }
 
 // runHook executes a shell command string via sh -c, inheriting the current
