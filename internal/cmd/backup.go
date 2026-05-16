@@ -12,6 +12,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/up1512001/memorybox/internal/app"
 	"github.com/up1512001/memorybox/internal/manifest"
+	"github.com/up1512001/memorybox/internal/notify"
 	"github.com/up1512001/memorybox/internal/rsync"
 	"github.com/up1512001/memorybox/internal/scheduler"
 	"github.com/up1512001/memorybox/internal/snapshot"
@@ -57,6 +58,11 @@ type backupOpts struct {
 func runBackup(ctx context.Context, a *app.App, opts backupOpts) error {
 	if err := a.CheckDrive(0); err != nil {
 		return err
+	}
+
+	// Warn if system rsync is Apple's openrsync (broken --backup-dir in 15.4+).
+	if warn := rsync.CheckVersion(""); warn != "" {
+		a.Printer.Warn(warn)
 	}
 
 	// Ensure required directories exist.
@@ -135,9 +141,11 @@ func runBackup(ctx context.Context, a *app.App, opts backupOpts) error {
 	}
 
 	results := sched.Run(ctx)
+	var sectionErrors []string
 	for _, r := range results {
 		if r.Err != nil {
 			a.Printer.Warn(fmt.Sprintf("%s: %v", r.Name, r.Err))
+			sectionErrors = append(sectionErrors, r.Name)
 		}
 	}
 
@@ -152,6 +160,13 @@ func runBackup(ctx context.Context, a *app.App, opts backupOpts) error {
 
 	// Append to history CSV.
 	appendHistory(a, snap.Key, totalFiles, totalChanged, totalArchived, totalSent)
+
+	// OS notification.
+	if len(sectionErrors) > 0 {
+		notify.Failure("Memory Box", fmt.Sprintf("Backup %s failed: %s", snap.Key, strings.Join(sectionErrors, ", ")))
+		return fmt.Errorf("backup completed with errors in sections: %s", strings.Join(sectionErrors, ", "))
+	}
+	notify.Success("Memory Box", fmt.Sprintf("Snapshot %s — %d updated", snap.Key, totalChanged))
 
 	return nil
 }

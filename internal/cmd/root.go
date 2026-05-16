@@ -36,7 +36,8 @@ Usage:
   membox diff [snapshot]         what changed between snapshots
   membox restore <pattern>       find and recover files
   membox status                  drive health and space
-  membox prune                   clean old archives`,
+  membox prune                   clean old archives
+  membox verify                  check backup integrity against latest manifest`,
 		Version: a.Build.Version + " (" + a.Build.Commit + ")",
 		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
 			// Override drive path if --drive flag was set.
@@ -71,6 +72,7 @@ Usage:
 		newRestoreCmd(a),
 		newStatusCmd(a),
 		newPruneCmd(a),
+		newVerifyCmd(a),
 	)
 
 	return root
